@@ -1,0 +1,209 @@
+I"�p<blockquote>
+  <p>CAS原理解析及源码分析</p>
+</blockquote>
+
+<h1 id="cas锁">CAS锁</h1>
+
+<p>CAS是一种无锁算法；它的全称：Compare and Swap（比较和交换）</p>
+
+<h3 id="算法思想">算法思想</h3>
+
+<p>CAS在操作的过程中主要有三个参数：一、内存中的值V(可以理解为实际当前时刻真实的值)；二、旧值A(可以理解为上次记录的修改的值)；三、要修改的新值B(可以理解为需要修改后的值)</p>
+
+<p>CAS的整体思路是：它首先会将<code class="language-plaintext highlighter-rouge">内存中的值V</code>与<code class="language-plaintext highlighter-rouge">旧值A</code>进行比较；如果一样就会将<code class="language-plaintext highlighter-rouge">内存中的值V</code>修改为<code class="language-plaintext highlighter-rouge">要修改的新值B</code>；如果不一样则就说明同一时刻该值被另一个线程修改过，此时就什么也不做。整个操作都属于原子操作。（下个循环继续）</p>
+
+<p><strong>拿案例说明</strong></p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">new</span> <span class="nc">Thread</span><span class="o">(()--&gt;{</span>
+    <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">10</span><span class="o">;</span>
+    <span class="n">i</span><span class="o">++;</span>
+<span class="o">})</span>
+</code></pre></div></div>
+<p>假设此时有两个线程A、B同时执行上面代码；他们会有各自的工作内存；线程A、B竞争，假设线程A首先读取内存值，与就是比较符合预期，即<code class="language-plaintext highlighter-rouge">10 == 10</code>；此时就是将11更新到内存；但是此时线程B已经将10读入了工作内存，这个是作为旧值，此时再与内存中的值比较会发现<code class="language-plaintext highlighter-rouge">11 != 10</code>；说明共享数据已经被修改，放弃已经所做的操作，然后拿新的内存的作为旧值，重新执行刚才的操作。直至下一次的重新操作则会成功修改；</p>
+
+<p><code class="language-plaintext highlighter-rouge">记住：CAS这里会有个不停的循环过程</code></p>
+
+<h3 id="java中cas的应用">Java中CAS的应用</h3>
+
+<p>在java.util.concurrent.atomic包下有一系列的类，这些类基本上都使用了CAS；</p>
+
+<p>下面我们以AtomicInteger进行说明（代码主要是使用了20个线程进行自增10000次来证明原子性.运行结果是：200000）：</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">MyThread</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="nc">AtomicInteger</span> <span class="n">race</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicInteger</span><span class="o">(</span><span class="mi">0</span><span class="o">);</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kd">final</span> <span class="kt">int</span> <span class="no">THREADS_COUNT</span> <span class="o">=</span> <span class="mi">20</span><span class="o">;</span>
+
+    <span class="kd">private</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">increase</span><span class="o">()</span> <span class="o">{</span>
+        <span class="n">race</span><span class="o">.</span><span class="na">incrementAndGet</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">InterruptedException</span> <span class="o">{</span>
+        <span class="nc">Thread</span><span class="o">[]</span> <span class="n">threads</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Thread</span><span class="o">[</span><span class="no">THREADS_COUNT</span><span class="o">];</span>
+        <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="no">THREADS_COUNT</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+            <span class="n">threads</span><span class="o">[</span><span class="n">i</span><span class="o">]</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Thread</span><span class="o">(</span><span class="k">new</span> <span class="nc">Runnable</span><span class="o">()</span> <span class="o">{</span>
+                <span class="nd">@Override</span>
+                <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+                    <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">10000</span><span class="o">;</span> <span class="n">i</span><span class="o">++)</span> <span class="o">{</span>
+                        <span class="n">increase</span><span class="o">();</span>
+                    <span class="o">}</span>
+                <span class="o">}</span>
+            <span class="o">});</span>
+            <span class="n">threads</span><span class="o">[</span><span class="n">i</span><span class="o">].</span><span class="na">start</span><span class="o">();</span>
+            <span class="n">threads</span><span class="o">[</span><span class="n">i</span><span class="o">].</span><span class="na">join</span><span class="o">();</span>
+        <span class="o">}</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">race</span><span class="o">);</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+<span class="c1">//程序运行结果为：200000</span>
+</code></pre></div></div>
+
+<p>程序输出正确结果，一切都要归功于AtomicInteger的incrementAndGet()方法的原子性，该方法无限循环，不断尝试将一个一个比当前值大1的新值赋给自己，如果失败了那说明在执行“获取-设置“操作的时候值已经有了修改，于是再次循环进行下一次操作，只带设置成功为止，它的原理实现其实非常简单。</p>
+
+<p>下面我们看下AtomicInteger的incrementAndGet()方法的源码：</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kt">int</span> <span class="nf">incrementAndGet</span><span class="o">()</span> <span class="o">{</span>
+    <span class="k">return</span> <span class="n">unsafe</span><span class="o">.</span><span class="na">getAndAddInt</span><span class="o">(</span><span class="k">this</span><span class="o">,</span> <span class="n">valueOffset</span><span class="o">,</span> <span class="mi">1</span><span class="o">)</span> <span class="o">+</span> <span class="mi">1</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+<p>实际调用的是unsafe的getAndAddInt方法：</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kt">int</span> <span class="nf">getAndAddInt</span><span class="o">(</span><span class="nc">Object</span> <span class="n">var1</span><span class="o">,</span> <span class="kt">long</span> <span class="n">var2</span><span class="o">,</span> <span class="kt">int</span> <span class="n">var4</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">int</span> <span class="n">var5</span><span class="o">;</span>
+    <span class="k">do</span> <span class="o">{</span>
+        <span class="n">var5</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">getIntVolatile</span><span class="o">(</span><span class="n">var1</span><span class="o">,</span> <span class="n">var2</span><span class="o">);</span>
+    <span class="o">}</span> <span class="k">while</span><span class="o">(!</span><span class="k">this</span><span class="o">.</span><span class="na">compareAndSwapInt</span><span class="o">(</span><span class="n">var1</span><span class="o">,</span> <span class="n">var2</span><span class="o">,</span> <span class="n">var5</span><span class="o">,</span> <span class="n">var5</span> <span class="o">+</span> <span class="n">var4</span><span class="o">));</span>
+
+    <span class="k">return</span> <span class="n">var5</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>由AtomicInteger源码我们可以看出；CAS的实现就是Unsafe类中的各个方法；Unsafe中的方法都是native本地方法；这是完全依赖于硬件的功能，通过他实现了原子操作。在执行过程中不允许被中断。同样这个内存的值value是用volatile关键字进行修饰这保证了可见性；防止了数据不一致问题。</p>
+
+<ul>
+  <li>1、Unsafe。是CAS的核心类，由于Java方法无法直接访问底层系统，需要通过本地（native）方法来访问，Unsafe相当于一个后门，基于该类可以直接操作特定内存的数据。Unsafe类存在于sun.misc包中，其内部方法操作可以像C指针一样直接操作内存。</li>
+  <li>2、保证原子性的atmicInteger中的incrementAndGet方法中使用了Unsafe的getAndAddInt方法，包含三个参数，this指当前操作对象，valueOffset表示该变量值在内存中的偏移地址，因为Unsafe就是根据内存偏移地址去获取数据的，最后一个参数是增加值，固定为1。</li>
+  <li>3、在compareAndSwapInt方法中，var1就是AtomicInteger对象本身，var2是该对象值的引用地址，var4是指需要变动的数量，而var5指的是用var1、var2找出的主内存中真实的值。用该对象当前的值与var5（也就是预期值）比较，如果相同，则更新值并返回true，如果不同，继续取值然后再比较，直至更新完成。</li>
+  <li>4、变量value用volatile修饰，保证了多线程之间的内存可见性。</li>
+</ul>
+
+<h3 id="cas与synchronizedb比对">CAS与synchronizedb比对</h3>
+
+<ul>
+  <li>synchronized是属于独占资源，同一时间段只允许有一个线程来访问，一致性得到了保障，但是并发性下降。</li>
+  <li>CAS并没有加锁而是进行多次地取值并比较，这样既保障了一致性，又提高了并发性。</li>
+</ul>
+
+<h3 id="cas如何保证原子性">CAS如何保证原子性</h3>
+
+<p>这里我们先回已一下CAS的思想：</p>
+
+<p>它首先会将<code class="language-plaintext highlighter-rouge">内存中的值V</code>与<code class="language-plaintext highlighter-rouge">旧值A</code>进行比较；如果一样就会将<code class="language-plaintext highlighter-rouge">内存中的值V</code>修改为<code class="language-plaintext highlighter-rouge">要修改的新值B</code>；如果不一样则就说明同一时刻该值被另一个线程修改过，此时会将<code class="language-plaintext highlighter-rouge">内存中的值V</code>更新到<code class="language-plaintext highlighter-rouge">旧值A</code>；然后继续下面循环比较工作，直至成功。</p>
+
+<p>这里其实存在一个问题，一个线程在进行<code class="language-plaintext highlighter-rouge">内存中的值V</code>与<code class="language-plaintext highlighter-rouge">旧值A</code>进行比较的时候通过，当需要修改的前一时刻，<code class="language-plaintext highlighter-rouge">内存中的值V</code>内存中的值发生变化；这个时候就会出现线程安全的问题。所以CAS保证了这个比较与更新的过程是原子性的；这样就会线程安全。</p>
+
+<p><code class="language-plaintext highlighter-rouge">那么CAS如何保证原子性？这里简单说下</code></p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">final</span> <span class="kt">int</span> <span class="nf">getAndAddInt</span><span class="o">(</span><span class="nc">Object</span> <span class="n">var1</span><span class="o">,</span> <span class="kt">long</span> <span class="n">var2</span><span class="o">,</span> <span class="kt">int</span> <span class="n">var4</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kt">int</span> <span class="n">var5</span><span class="o">;</span>
+    <span class="k">do</span> <span class="o">{</span>
+        <span class="n">var5</span> <span class="o">=</span> <span class="k">this</span><span class="o">.</span><span class="na">getIntVolatile</span><span class="o">(</span><span class="n">var1</span><span class="o">,</span> <span class="n">var2</span><span class="o">);</span>
+	<span class="c1">// CAS的实现就是	compareAndSwapInt方法；此方法是native方法</span>
+    <span class="o">}</span> <span class="k">while</span><span class="o">(!</span><span class="k">this</span><span class="o">.</span><span class="na">compareAndSwapInt</span><span class="o">(</span><span class="n">var1</span><span class="o">,</span> <span class="n">var2</span><span class="o">,</span> <span class="n">var5</span><span class="o">,</span> <span class="n">var5</span> <span class="o">+</span> <span class="n">var4</span><span class="o">));</span>
+
+    <span class="k">return</span> <span class="n">var5</span><span class="o">;</span>
+<span class="o">}</span>
+</code></pre></div></div>
+<p>所以说这里保证原子性就在本地方法，也就是C++进行实现的；再底层的最终实现是通过<code class="language-plaintext highlighter-rouge">lock cmpxchg 指令</code>；其中<code class="language-plaintext highlighter-rouge">lock</code>是一个锁总线的一个锁；保证了多核CPU下的指令同步。</p>
+
+<h3 id="cas缺点">CAS缺点</h3>
+
+<ul>
+  <li>循环时间长，开销很大。如果CAS失败，会一直进行尝试，如果长时间一直不成功，可能会给CPU带来很大的开销。</li>
+  <li>只能保证一个共享变量的原子操作。</li>
+  <li>引发ABA问题</li>
+</ul>
+
+<h3 id="aba问题">ABA问题</h3>
+
+<p><strong>何为ABA问题？</strong>
+如果一个<code class="language-plaintext highlighter-rouge">内存中的值V</code>初次读取的时候是A，当我们在准备更新的时候检查它的值还是A，在初次读取到开始检查之前我们不能确保<code class="language-plaintext highlighter-rouge">内存中的值V</code>有没有被其他线程改过！</p>
+
+<p>因为在这段时间如果我们有一个线程将<code class="language-plaintext highlighter-rouge">内存中的值V</code>先改成B，然后又改成了A；那么CAS在前面的操作就会认为<code class="language-plaintext highlighter-rouge">内存中的值V</code>一直没有变过；这个就是ABA问题。
+<strong>代码模拟ABA</strong></p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AtomicTest</span> <span class="kd">extends</span> <span class="nc">Thread</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="nc">AtomicInteger</span> <span class="n">atomicInteger</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicInteger</span><span class="o">(</span><span class="mi">19</span><span class="o">);</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">InterruptedException</span> <span class="o">{</span>
+        <span class="nc">AtomicTest</span> <span class="n">thread01</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicTest</span><span class="o">();</span>
+        <span class="n">thread01</span><span class="o">.</span><span class="na">start</span><span class="o">();</span>
+        <span class="c1">//  设置账户初始值小于20，这是一个需要被充值的客户</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"主线程将19先修改20："</span> <span class="o">+</span> <span class="n">atomicInteger</span><span class="o">.</span><span class="na">compareAndSet</span><span class="o">(</span><span class="mi">19</span><span class="o">,</span> <span class="mi">20</span><span class="o">));</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"主线程将20又修改19："</span> <span class="o">+</span> <span class="n">atomicInteger</span><span class="o">.</span><span class="na">compareAndSet</span><span class="o">(</span><span class="mi">20</span><span class="o">,</span> <span class="mi">19</span><span class="o">));</span>
+        <span class="n">thread01</span><span class="o">.</span><span class="na">join</span><span class="o">();</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"atomicInteger最终结果："</span> <span class="o">+</span> <span class="n">atomicInteger</span><span class="o">.</span><span class="na">get</span><span class="o">());</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="nc">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">100</span><span class="o">);</span>
+            <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"子线程将19修改21："</span> <span class="o">+</span> <span class="n">atomicInteger</span><span class="o">.</span><span class="na">compareAndSet</span><span class="o">(</span><span class="mi">19</span><span class="o">,</span> <span class="mi">21</span><span class="o">));</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">InterruptedException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">().</span><span class="na">interrupt</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+<span class="c1">//程序输出：</span>
+<span class="n">主线程将19先修改20</span><span class="err">：</span><span class="kc">true</span>
+<span class="n">主线程将20又修改19</span><span class="err">：</span><span class="kc">true</span>
+<span class="n">子线程将19修改21</span><span class="err">：</span><span class="kc">true</span>
+<span class="n">atomicInteger最终结果</span><span class="err">：</span><span class="mi">21</span>
+</code></pre></div></div>
+
+<p>如果需要解决ABA问题，原子引用类提供了一个带有标记的类 - <code class="language-plaintext highlighter-rouge">AtomicStampedReference</code>;或者改用传统的互斥同步（典型的就是synchronized 和Lock）可能会比原子类更高效。</p>
+
+<h3 id="atomicstampedreference">AtomicStampedReference</h3>
+
+<p>AtomicStampedReference内部维护了一个stamp版本号，主要用来解决ABA问题。</p>
+
+<p><strong>示例代码</strong></p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="kd">class</span> <span class="nc">AtomicTest</span> <span class="kd">extends</span> <span class="nc">Thread</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="kd">static</span> <span class="nc">AtomicStampedReference</span><span class="o">&lt;</span><span class="nc">Integer</span><span class="o">&gt;</span> <span class="n">atomicStampedReference</span> <span class="o">=</span>
+            <span class="k">new</span> <span class="nc">AtomicStampedReference</span><span class="o">&lt;&gt;(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">1</span><span class="o">);</span>
+
+    <span class="kd">public</span> <span class="kd">static</span> <span class="kt">void</span> <span class="nf">main</span><span class="o">(</span><span class="nc">String</span><span class="o">[]</span> <span class="n">args</span><span class="o">)</span> <span class="kd">throws</span> <span class="nc">InterruptedException</span> <span class="o">{</span>
+        <span class="nc">AtomicTest</span> <span class="n">thread01</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">AtomicTest</span><span class="o">();</span>
+        <span class="n">thread01</span><span class="o">.</span><span class="na">start</span><span class="o">();</span>
+
+        <span class="nc">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">100</span><span class="o">);</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"主线程将AtomicStampedReference(1,1)修改为(2,2)："</span> <span class="o">+</span>
+                <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">compareAndSet</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">(),</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">()</span> <span class="o">+</span> <span class="mi">1</span><span class="o">));</span>
+        <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"主线程将AtomicStampedReference(2,2)又修改(1,3)："</span> <span class="o">+</span>
+                <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">compareAndSet</span><span class="o">(</span><span class="mi">2</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">(),</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">()</span> <span class="o">+</span> <span class="mi">1</span><span class="o">));</span>
+
+
+        <span class="n">thread01</span><span class="o">.</span><span class="na">join</span><span class="o">();</span>
+    <span class="o">}</span>
+
+    <span class="nd">@Override</span>
+    <span class="kd">public</span> <span class="kt">void</span> <span class="nf">run</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">try</span> <span class="o">{</span>
+            <span class="kt">int</span> <span class="n">stamp</span> <span class="o">=</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">();</span>
+            <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"子线程获取AtomicStampedReference版本号："</span> <span class="o">+</span> <span class="n">stamp</span><span class="o">);</span>
+            <span class="nc">Thread</span><span class="o">.</span><span class="na">sleep</span><span class="o">(</span><span class="mi">300</span><span class="o">);</span>
+            <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"子线程将AtomicStampedReference(1,1)修改(3,2)："</span> <span class="o">+</span>
+                    <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">compareAndSet</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="n">stamp</span><span class="o">,</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">()</span> <span class="o">+</span> <span class="mi">1</span><span class="o">));</span>
+            <span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="s">"子线程获取AtomicStampedReference实际版本号："</span> <span class="o">+</span> <span class="n">atomicStampedReference</span><span class="o">.</span><span class="na">getStamp</span><span class="o">());</span>
+        <span class="o">}</span> <span class="k">catch</span> <span class="o">(</span><span class="nc">InterruptedException</span> <span class="n">e</span><span class="o">)</span> <span class="o">{</span>
+            <span class="nc">Thread</span><span class="o">.</span><span class="na">currentThread</span><span class="o">().</span><span class="na">interrupt</span><span class="o">();</span>
+        <span class="o">}</span>
+    <span class="o">}</span>
+<span class="o">}</span>
+<span class="c1">//程序输出：</span>
+<span class="n">子线程获取AtomicStampedReference版本号</span><span class="err">：</span><span class="mi">1</span>
+<span class="n">主线程将AtomicStampedReference</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">1</span><span class="o">)</span><span class="n">修改为</span><span class="o">(</span><span class="mi">2</span><span class="o">,</span><span class="mi">2</span><span class="o">)</span><span class="err">：</span><span class="kc">true</span>
+<span class="n">主线程将AtomicStampedReference</span><span class="o">(</span><span class="mi">2</span><span class="o">,</span><span class="mi">2</span><span class="o">)</span><span class="n">又修改</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">3</span><span class="o">)</span><span class="err">：</span><span class="kc">true</span>
+<span class="n">子线程将AtomicStampedReference</span><span class="o">(</span><span class="mi">1</span><span class="o">,</span><span class="mi">1</span><span class="o">)</span><span class="n">修改</span><span class="o">(</span><span class="mi">3</span><span class="o">,</span><span class="mi">2</span><span class="o">)</span><span class="err">：</span><span class="kc">false</span>
+<span class="n">子线程获取AtomicStampedReference实际版本号</span><span class="err">：</span><span class="mi">3</span>
+</code></pre></div></div>
+
+<p><code class="language-plaintext highlighter-rouge">AtomicStampedReference内存需要自己手动去维护这个版本号stamp；如果版本号维护的有问题（类似值变化的问题）其实依旧也会出现ABA问题；所以注意版本号的维护，AtomicStampedReference其实是把ABA问题交由我们开发人员自己去控制了</code></p>
+
+<p>AtomicReference<T>其实就是与AtomicInteger内部实现一样，只不过AtomicReference<T>自己定义泛型，AtomicStampedReference<T>就是带版本号的自己定义泛型；</T></T></T></p>
+:ET

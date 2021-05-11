@@ -1,7 +1,7 @@
 # Site settings 配置站点
 title: '我爱2B哥の博客'
 description: '你会写：Hello World! 吗？'
-keyword: 'java, spring, springboot, redis, mysql, 分布式, 架构, CAS'
+keyword: 'java, spring, springboot, springcloud, redis, mysql, 分布式, 架构, CAS, 算法, 设计模式, 源码分析, 数据库, 中间件, 缓存, 工具, JVM, 数据结构'
 url: 'https://gaoyeming.github.io/' # your host
 
 # when build blog on server, if you don't need baseurl, you should leave this value blank.

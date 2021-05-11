@@ -1,9 +1,9 @@
 ---
 layout: post
 title: 'Java 多线程基础'
-date: 2019-05-03
+date: 2019-09-10
 author: yemong.gao
-cover: '/images/2019-05-03-Java_Multiy_Thread_Basis/image00.jpg'
+cover: '/images/2019-09-10-Multiy_Thread_Basis/image00.jpg'
 tags: java 多线程
 ---
 
@@ -91,7 +91,7 @@ public class MyPool {
 * java.lang.Runable接口的run()方法的异常只能在方法内部处理，不能上抛。
 * java.util.concurrent.Callable接口提供call()方法允许抛出异常
 
-![image01](/images/2019-05-03-Java_Multiy_Thread_Basis/image01.png)
+![image01](/images/2019-09-10-Multiy_Thread_Basis/image01.png)
 
 ### 线程池ExcutorService中的excutor和submit方法的区别
 
@@ -296,7 +296,7 @@ public enum State {
 
 #### 各种状态之间切换图
 
-![image02](/images/2019-05-03-Java_Multiy_Thread_Basis/image02.png)
+![image02](/images/2019-09-10-Multiy_Thread_Basis/image02.png)
 
 #### 状态切换代码演示
 
@@ -924,7 +924,7 @@ myThread01守护线程所有业务处理结束
 
 ### Java的内存模型
 
-![image03](/images/2019-05-03-Java_Multiy_Thread_Basis/image03.png)
+![image03](/images/2019-09-10-Multiy_Thread_Basis/image03.png)
 
 **Java内存模型-操作规范：**
 * 1，共享变量必须存放在主内存中
